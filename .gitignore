@@ -1,0 +1,7 @@
+.env
+stored_info/banned_words.json
+stored_info/current_enemy.json
+stored_info/hello_responses.json
+stored_info/players.json
+stored_info/random_shorts.json
+stored_info/short_comments.json
