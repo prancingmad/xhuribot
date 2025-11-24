@@ -61,11 +61,7 @@ short_comments = load_json(SHORT_COMMENTS_FILE)
 async def hourly_enemy_check():
     global enemy_attacking
     while enemy_attacking:
-        #Clean this up after TESTMODE
-        if CURRENT_SERVER == 1399205925121687593:
-            await asyncio.sleep(5 * 60)
-        else:
-            await asyncio.sleep(60 * 60)
+        await asyncio.sleep(60 * 60)
 
         enemy = load_json(CURRENT_ENEMY)
         if not enemy_attacking or not enemy:
@@ -246,22 +242,12 @@ async def modcommands(ctx):
 
 @bot.tree.command(name="roll1d20", description="Roll a random number from 1 to 20")
 async def roll1d20(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     result = random.randint(1, 20)
     user_mention = interaction.user.mention
     await interaction.response.send_message(f"{user_mention} rolled a **{result}**!")
 
 @bot.tree.command(name="hixhuri", description="Say hello to everyone's favorite Kobold!")
 async def hi_xhuri(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     response = random.choice(hello_responses)
     personalized = response.format(user=interaction.user.display_name)
     await interaction.response.send_message(personalized)
@@ -304,11 +290,6 @@ async def toggle_ollie_alerts(interaction: discord.Interaction):
 
 @bot.tree.command(name="randomshort", description="Displays a random Vibe Check YouTube short to the channel!")
 async def random_short(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     try:
         if not shorts:
             await interaction.response.send_message("No Shorts available, or an error retrieving them - please alert a mod!")
@@ -371,11 +352,6 @@ async def mod_request(interaction: discord.Interaction, message:str):
 
 @bot.tree.command(name="jointhefight", description="Add yourself to the player list and join the fight!")
 async def join_the_fight(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     user_id = str(interaction.user.id)
     players = load_json(PLAYERS_FILE)
 
@@ -395,11 +371,6 @@ async def join_the_fight(interaction: discord.Interaction):
 
 @bot.tree.command(name="leavethefight", description="Remove yourself from the player list. Rejoining later resets you to level 1.")
 async def leave_the_fight(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     user_id = str(interaction.user.id)
     players = load_json(PLAYERS_FILE)
 
@@ -412,11 +383,6 @@ async def leave_the_fight(interaction: discord.Interaction):
 
 @bot.tree.command(name="summonenemy", description="Summon a random enemy for the community to fight!")
 async def summon_enemy(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
     global enemy_attacking
 
@@ -447,6 +413,7 @@ async def summon_enemy(interaction: discord.Interaction):
         "enemy_name": enemy_name,
         "enemy_health": enemy["enemy_health"],
         "enemy_exp": enemy["enemy_exp"],
+        "damage": enemy["damage"],
         "message_id": None,
         "channel_id": interaction.channel.id,
         "source_file": source_file
@@ -484,17 +451,12 @@ async def summon_enemy(interaction: discord.Interaction):
 @bot.tree.command(name="attack", description="Attack the current enemy!")
 @app_commands.describe(weapon="Choose your attack!")
 @app_commands.choices(weapon=[
-    app_commands.Choice(name="Dagger - Small cooldown, small damage", value="Dagger"),
-    app_commands.Choice(name="Sword - Medium cooldown, medium damage", value="Sword"),
-    app_commands.Choice(name="Mace - High cooldown, high damage", value="Mace"),
-    app_commands.Choice(name="Fireball - Max cooldown, very high damage", value="Fireball")
+    app_commands.Choice(name="Dagger", value="Dagger"),
+    app_commands.Choice(name="Sword", value="Sword"),
+    app_commands.Choice(name="Mace", value="Mace"),
+    app_commands.Choice(name="Fireball", value="Fireball")
 ])
 async def attack(interaction: discord.Interaction, weapon: Optional[app_commands.Choice[str]] = None):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
     if interaction.channel != battle_room:
         await interaction.response.send_message(f"This command can only be used in the #{BATTLE_CHANNEL} channel.", ephemeral=True)
@@ -587,11 +549,13 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
         for e in enemy_list:
             if e["enemy_name"] == enemy["enemy_name"]:
                 if source_file == "enemies.json":
-                    e["enemy_health"] = math.ceil(e["enemy_health"] * 1.2)
+                    e["enemy_health"] = math.ceil(e["enemy_health"] * 1.1)
                     e["damage"] += 0.5
+                    e["enemy_exp"] += 1
                 elif source_file == "bosses.json":
-                    e["enemy_health"] = math.ceil(e["enemy_health"] * 1.5)
+                    e["enemy_health"] = math.ceil(e["enemy_health"] * 1.2)
                     e["damage"] += 1
+                    e["enemy_exp"] += 10
                 break
         save_json(source_file, enemy_list)
         save_json(CURRENT_ENEMY, {})
@@ -603,11 +567,6 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
 
 @bot.tree.command(name="heal", description="Heals the party!")
 async def heal(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
     if interaction.channel != battle_room:
         await interaction.response.send_message(f"This command can only be used in the #{BATTLE_CHANNEL} channel.",
@@ -628,6 +587,19 @@ async def heal(interaction: discord.Interaction):
 
     player = players[user_id]
     now = time.time()
+
+    heal_cd = player["cooldowns"].get("attack", 0)
+
+    if now < heal_cd:
+        remaining = int(heal_cd - now)
+        hours, rem = divmod(remaining, 3600)
+        minutes, seconds = divmod(rem, 60)
+        time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+
+        await interaction.response.send_message(
+            f"You must wait **{time_str}** before doing an action!", ephemeral=True
+        )
+        return
     player["cooldowns"]["attack"] = now + HEAL_TIMER
     health = load_json(PARTY_HEALTH_FILE)
     new_health = [health[0] + player["player_level"]]
@@ -642,11 +614,6 @@ async def heal(interaction: discord.Interaction):
 
 @bot.tree.command(name="checkstats", description="Checks your current stats.")
 async def checkstats(interaction: discord.Interaction):
-    if interaction.guild.id != CURRENT_SERVER:
-        await interaction.response.send_message(
-            "Xhuribot is currently down for maintenance and is currently testing - she will return soon!", ephemeral=True
-        )
-        return
     user_id = str(interaction.user.id)
     players = load_json(PLAYERS_FILE)
 

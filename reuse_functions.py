@@ -12,7 +12,8 @@ def load_json(file):
         return json.load(json_file)
 
 def save_json(file, data):
-    with open(file, "w") as f:
+    full_path = os.path.join(BASE_DIR, JSON_DIR, file)
+    with open(full_path, "w") as f:
         json.dump(data, f, indent=2)
 
 def is_valid_short_url(url: str):
