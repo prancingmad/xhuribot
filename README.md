@@ -121,8 +121,3 @@ Slash commands will sync automatically when the bot starts.
 - Certain features require channel names to match those in `constants.py` (e.g., `battle_room`, `log_channel`).
 - Moderation commands (commands prefixed with !) require the role defined as `MOD_ROLE`.
 
-##
-Motivation
-Quick Start
-Usage
-Contributing
