@@ -26,7 +26,7 @@ DAGGER_ATTACK_TIMER = 8 * conmath * conmath
 SWORD_ATTACK_TIMER = 18 * conmath * conmath
 MACE_ATTACK_TIMER = 24 * conmath * conmath
 FIREBALL_ATTACK_TIMER = 48 * conmath * conmath
-HEAL_TIMER = 8 * conmath * conmath
+HEAL_TIMER =  18 * conmath * conmath
 
 EMOJI_TRIGGERS = {
     "xhuri": ("jellyxhuri", "🐲"),

@@ -2,6 +2,6 @@
 .env
 discord.log
 stored_info
-__pyache__/
+__pycache__/
 *.pyc
 venv/

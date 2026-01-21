@@ -49,6 +49,22 @@ async def on_ready():
             print(f"Failed to sync commands: {e}")
 
         bot_ready = True
+enemy_attacking = False
+
+@bot.event
+async def on_ready():
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands.")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+    global enemy_attacking
+
+    enemy = load_json(CURRENT_ENEMY)
+
+    if enemy and not enemy_attacking:
+        enemy_attacking = True
+        asyncio.create_task(hourly_enemy_check())
 
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
@@ -106,6 +122,32 @@ async def stop_enemy_attack_loop():
         except asyncio.CancelledError:
             pass
     enemy_attack_task = None
+    global enemy_attacking
+    while enemy_attacking:
+        await asyncio.sleep(60 * 60)
+
+        enemy = load_json(CURRENT_ENEMY)
+        if not enemy_attacking or not enemy:
+            break
+
+        health = load_json(PARTY_HEALTH_FILE)
+        damage = math.floor(enemy["damage"])
+        new_health = [health[0] - damage]
+        battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
+
+        if new_health[0] <= 0:
+            await battle_room.send("The enemy has defeated the party...")
+            save_json(CURRENT_ENEMY, {})
+            players = load_json(PLAYERS_FILE)
+            for victor_id, victor in players.items():
+                if victor.get("contributed"):
+                    victor["contributed"] = False
+            save_json(PLAYERS_FILE, players)
+            save_json(PARTY_HEALTH_FILE, [])
+            enemy_attacking = False
+        else:
+            await battle_room.send(f"The enemy has attacked the party, and dealt {damage} damage - Party's Current Health: {new_health[0]}")
+            save_json(PARTY_HEALTH_FILE, new_health)
 
 @bot.event
 async def on_message(message):
@@ -405,6 +447,7 @@ async def leave_the_fight(interaction: discord.Interaction):
 @bot.tree.command(name="summonenemy", description="Summon a random enemy for the community to fight!")
 async def summon_enemy(interaction: discord.Interaction):
     battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
+    global enemy_attacking
 
     if interaction.channel != battle_room:
         await interaction.response.send_message(f"This command can only be used in the #{BATTLE_CHANNEL} channel.", ephemeral=True)
@@ -464,6 +507,7 @@ async def summon_enemy(interaction: discord.Interaction):
     save_json(CURRENT_ENEMY, current_enemy)
     save_json(PARTY_HEALTH_FILE, party_health)
     await start_enemy_attack_loop()
+    enemy_attacking = True
     asyncio.create_task(hourly_enemy_check())
 
     await interaction.followup.send(f"{interaction.user.mention} encountered a **{enemy['enemy_name']}**! Work together to defeat it!")
@@ -562,6 +606,8 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
     save_json(PLAYERS_FILE, players)
     save_json(PARTY_HEALTH_FILE, party_health)
     await stop_enemy_attack_loop()
+    global enemy_attacking
+    enemy_attacking = False
 
     if source_file:
         enemy_list = load_json(source_file)
@@ -574,6 +620,11 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
                 elif source_file == "bosses.json":
                     e["enemy_health"] = math.ceil(e["enemy_health"] * 1.2)
                     e["damage"] += 0.5
+                    e["damage"] += 0.5
+                    e["enemy_exp"] += 1
+                elif source_file == "bosses.json":
+                    e["enemy_health"] = math.ceil(e["enemy_health"] * 1.2)
+                    e["damage"] += 1
                     e["enemy_exp"] += 10
                 break
         save_json(source_file, enemy_list)
@@ -660,7 +711,7 @@ async def checkstats(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"Greetings {p_name}! You are currently level {p_level}, with {p_exp} exp, and you {p_attack}",
         ephemeral=True)
-    
+
 enemy = load_json(CURRENT_ENEMY)
 
 print("Starting Xhuribot...")
