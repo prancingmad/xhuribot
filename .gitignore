@@ -1,0 +1,7 @@
+.venv/
+.env
+discord.log
+stored_info
+__pyache__/
+*.pyc
+venv/
