@@ -5,3 +5,4 @@ stored_info
 __pycache__/
 *.pyc
 venv/
+todolist.md

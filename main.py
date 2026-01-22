@@ -14,6 +14,7 @@ from typing import Optional
 from constants import *
 from reuse_functions import *
 
+#Initialize
 load_dotenv()
 token = os.getenv('DISCORD_TOKEN')
 
@@ -34,12 +35,23 @@ logging.basicConfig(
 )
 
 bot = commands.Bot(command_prefix='!', intents=intents)
-enemy_attack_task: asyncio.Task | None = None
+enemy_attacking = False
+hourly_task_flag = False
 bot_ready = False
+
+#Preload JSONs
+banned_words = set(load_json("banned_words.json"))
+current_enemy = load_json("current_enemy.json")
+hello_responses = load_json("hello_responses.json")
+shorts = load_json("random_shorts.json")
+party_health = load_json("party_health.json")
+players = load_json("players.json")
+random_shorts = load_json("random_shorts.json")
+short_comments = load_json("short_comments.json")
 
 @bot.event
 async def on_ready():
-    global bot_ready, enemy_attack_task
+    global bot_ready, enemy_attacking, hourly_task_flag
 
     if not bot_ready:
         try:
@@ -49,105 +61,38 @@ async def on_ready():
             print(f"Failed to sync commands: {e}")
 
         bot_ready = True
-enemy_attacking = False
-
-@bot.event
-async def on_ready():
-    try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} commands.")
-    except Exception as e:
-        print(f"Failed to sync commands: {e}")
-    global enemy_attacking
-
-    enemy = load_json(CURRENT_ENEMY)
-
-    if enemy and not enemy_attacking:
+    if current_enemy:
         enemy_attacking = True
-        asyncio.create_task(hourly_enemy_check())
-
+    if not hourly_task_flag:
+        bot.loop.create_task(hourly_check())
+        hourly_task_flag = True
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
-banned_words = set(load_json(BANNED_WORDS_FILE))
-hello_responses = (load_json(HELLO_RESPONSES_FILE))
-shorts = (load_json(RANDOM_SHORTS_FILE))
-short_comments = load_json(SHORT_COMMENTS_FILE)
+async def hourly_check():
+    global current_enemy, party_health
+    await bot.wait_until_ready()
+    await asyncio.sleep(60 * 60)
+    battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
 
-async def hourly_enemy_check():
-    try:
-        while True:
-            await asyncio.sleep(60 * 60)
-
-            enemy = load_json(CURRENT_ENEMY)
-            if not enemy:
-                break
-
-            health = load_json(PARTY_HEALTH_FILE)
-            damage = math.floor(enemy["damage"])
-            new_health = [health[0] - damage]
-            battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
+    while not bot.is_closed():
+        if enemy_attacking:
+            damage = math.floor(current_enemy["damage"])
+            new_health = [party_health[0] - damage]
 
             if new_health[0] <= 0:
-                await battle_room.send("The enemy has defeated the party...")
-                save_json(CURRENT_ENEMY, {})
-                players = load_json(PLAYERS_FILE)
-                for victor_id, victor in players.items():
-                    if victor.get("contributed"):
-                        victor["contributed"] = False
-                save_json(PLAYERS_FILE, players)
-                save_json(PARTY_HEALTH_FILE, [])
-                break
-
+                await battle_room.send("☠️The enemy has defeated the party...")
+                current_enemy = []
+                party_health = []
+                for victor in players.values():
+                    victor["contributed"] = False
+                save_json("current_enemy.json", current_enemy)
+                save_json("party_health.json", party_health)
+                save_json("players.json", players)
             else:
                 await battle_room.send(
-                    f"The enemy has attacked the party and dealt {damage} damage! Party HP: {new_health[0]}"
+                    f"💀The enemy has attacked the party and dealt {damage} damage! Party HP: {new_health[0]}"
                 )
-                save_json(PARTY_HEALTH_FILE, new_health)
-
-    except asyncio.CancelledError:
-        print("Enemy attack loop cancelled.")
-        raise
-
-async def start_enemy_attack_loop():
-    global enemy_attack_task
-    if enemy_attack_task is None or enemy_attack_task.done():
-        enemy_attack_task = asyncio.create_task(hourly_enemy_check())
-
-async def stop_enemy_attack_loop():
-    global enemy_attack_task
-    if enemy_attack_task and not enemy_attack_task.done():
-        enemy_attack_task.cancel()
-        try:
-            await enemy_attack_task
-        except asyncio.CancelledError:
-            pass
-    enemy_attack_task = None
-    global enemy_attacking
-    while enemy_attacking:
         await asyncio.sleep(60 * 60)
-
-        enemy = load_json(CURRENT_ENEMY)
-        if not enemy_attacking or not enemy:
-            break
-
-        health = load_json(PARTY_HEALTH_FILE)
-        damage = math.floor(enemy["damage"])
-        new_health = [health[0] - damage]
-        battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
-
-        if new_health[0] <= 0:
-            await battle_room.send("The enemy has defeated the party...")
-            save_json(CURRENT_ENEMY, {})
-            players = load_json(PLAYERS_FILE)
-            for victor_id, victor in players.items():
-                if victor.get("contributed"):
-                    victor["contributed"] = False
-            save_json(PLAYERS_FILE, players)
-            save_json(PARTY_HEALTH_FILE, [])
-            enemy_attacking = False
-        else:
-            await battle_room.send(f"The enemy has attacked the party, and dealt {damage} damage - Party's Current Health: {new_health[0]}")
-            save_json(PARTY_HEALTH_FILE, new_health)
 
 @bot.event
 async def on_message(message):
@@ -157,14 +102,14 @@ async def on_message(message):
     lower_msg = message.content.lower()
     triggering_word = None
 
-    for keyword, (custom, fallback) in EMOJI_TRIGGERS.items():
-        if keyword in lower_msg:
-            await react_with_emoji(message, custom, fallback)
-
     for word in banned_words:
         if re.search(rf'\b{re.escape(word)}\b', lower_msg):
             triggering_word = word
             break
+
+    for keyword, (custom, fallback) in EMOJI_TRIGGERS.items():
+        if keyword in lower_msg:
+            await react_with_emoji(message, custom, fallback)
 
     if triggering_word:
         try:
@@ -204,7 +149,6 @@ async def log_deleted_message(message, word):
     embed.add_field(name="Triggered Word", value=f"'{word}'", inline = False)
     embed.add_field(name="Message", value=highlighted_msg[:1024], inline=False)
 
-
     await log_channel.send(embed=embed)
 
 @bot.command(name="addbannedword")
@@ -216,7 +160,7 @@ async def addbannedword(ctx, word: str):
         await ctx.send("That word is already on the ban list. If you'd like to see all currently banned words, please run !listbannedwords.")
     else:
         banned_words.add(word)
-        save_json(BANNED_WORDS_FILE, list(banned_words))
+        save_json("banned_words.json", banned_words)
         await ctx.send(f"Added '{word}' to the banned words list. If you'd like to see all currently banned words, please run !listbannedwords.")
 
 @bot.command(name="removebannedword")
@@ -226,7 +170,7 @@ async def removebannedword(ctx, word: str):
 
     if word in banned_words:
         banned_words.remove(word)
-        save_json(BANNED_WORDS_FILE, list(banned_words))
+        save_json("banned_words.json", banned_words)
         await ctx.send(f"Removed '{word}' from the banned words list. If you'd like to see all currently banned words, please run !listbannedwords.")
     else:
         await ctx.send(f"'{word}' is not currently banned. If you'd like to see all currently banned words, please run !listbannedwords.")
@@ -252,7 +196,7 @@ async def addshort(ctx, url: str):
         return
 
     shorts.append(url)
-    save_json(RANDOM_SHORTS_FILE, shorts)
+    save_json("random_shorts.json", shorts)
     await ctx.send("Short added!")
 
 @bot.command(name="removeshort")
@@ -262,30 +206,10 @@ async def removeshort(ctx, url: str):
 
     if url in shorts:
         shorts.remove(url)
-        save_json(RANDOM_SHORTS_FILE, shorts)
+        save_json("random_shorts.json", shorts)
         await ctx.send("Short removed!")
     else:
         await ctx.send("That video is not in the list.")
-
-@bot.command(name="clearenemy")
-@commands.has_role(MOD_ROLE)
-async def clearenemy(ctx):
-    if not os.path.exists(CURRENT_ENEMY):
-        await ctx.send("There is no enemy currently active.")
-        return
-
-    try:
-        os.remove(CURRENT_ENEMY)
-    except Exception as e:
-        await ctx.send (f"Failed to clear enemy: {e}")
-        return
-
-    players = load_json(PLAYERS_FILE)
-    for player in players.values():
-        player["contributed"] = False
-    save_json(PLAYERS_FILE, players)
-
-    await ctx.send("The enemy has retreated, for now!")
 
 @bot.command(name="modcommands")
 @commands.has_role(MOD_ROLE)
@@ -296,8 +220,7 @@ async def modcommands(ctx):
         "`!listbannedwords` – View all banned words",
         "`!addshort <url>` - Adds a short to the Youtube Shorts list",
         "`!removeshort <url>` – Removes a short from the Youtube Shorts list",
-        "`!modcommands` – Show this list of mod-only commands",
-        "`!clearenemy` - Clears out the current enemy"
+        "`!modcommands` – Show this list of mod-only commands"
     ]
 
     response = "**Mod-Only Commands:**\n" + "\n".join(mod_command_list)
@@ -416,7 +339,6 @@ async def mod_request(interaction: discord.Interaction, message:str):
 @bot.tree.command(name="jointhefight", description="Add yourself to the player list and join the fight!")
 async def join_the_fight(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    players = load_json(PLAYERS_FILE)
 
     if user_id in players:
         await interaction.response.send_message("You've already joined the fight!", ephemeral=True)
@@ -429,17 +351,16 @@ async def join_the_fight(interaction: discord.Interaction):
         "contributed": False,
         "cooldowns": {}
     }
-    save_json(PLAYERS_FILE, players)
+    save_json("players.json", players)
     await interaction.response.send_message("You've joined the fight! Use /summonenemy or /attack in #battle_room!", ephemeral=True)
 
 @bot.tree.command(name="leavethefight", description="Remove yourself from the player list. Rejoining later resets you to level 1.")
 async def leave_the_fight(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    players = load_json(PLAYERS_FILE)
 
     if user_id in players:
         del players[user_id]
-        save_json(PLAYERS_FILE, players)
+        save_json("players.json", players)
         await interaction.response.send_message("You have been removed from the players list, and are eligible to rejoin in the future if you wish!", ephemeral=True)
     else:
         await interaction.response.send_message("You are not currently on the player's list.", ephemeral=True)
@@ -447,7 +368,7 @@ async def leave_the_fight(interaction: discord.Interaction):
 @bot.tree.command(name="summonenemy", description="Summon a random enemy for the community to fight!")
 async def summon_enemy(interaction: discord.Interaction):
     battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
-    global enemy_attacking
+    global enemy_attacking, current_enemy, party_health
 
     if interaction.channel != battle_room:
         await interaction.response.send_message(f"This command can only be used in the #{BATTLE_CHANNEL} channel.", ephemeral=True)
@@ -455,8 +376,7 @@ async def summon_enemy(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    enemy_data = load_json(CURRENT_ENEMY)
-    if enemy_data:
+    if current_enemy:
         await interaction.response.send_message("An enemy is already present! Work with the community to defeat it first!", ephemeral=True)
         return
 
@@ -504,11 +424,10 @@ async def summon_enemy(interaction: discord.Interaction):
 
     current_enemy["message_id"] = message.id
     party_health = [10]
-    save_json(CURRENT_ENEMY, current_enemy)
-    save_json(PARTY_HEALTH_FILE, party_health)
+    save_json("current_enemy.json", current_enemy)
+    save_json("party_health.json", party_health)
     await start_enemy_attack_loop()
     enemy_attacking = True
-    asyncio.create_task(hourly_enemy_check())
 
     await interaction.followup.send(f"{interaction.user.mention} encountered a **{enemy['enemy_name']}**! Work together to defeat it!")
 
@@ -518,20 +437,20 @@ async def summon_enemy(interaction: discord.Interaction):
     app_commands.Choice(name="Dagger", value="Dagger"),
     app_commands.Choice(name="Sword", value="Sword"),
     app_commands.Choice(name="Mace", value="Mace"),
-    app_commands.Choice(name="Fireball", value="Fireball")
+    app_commands.Choice(name="Fireball", value="Fireball"),
+    app_commands.Choice(name="Punch", value="Punch"),
 ])
 async def attack(interaction: discord.Interaction, weapon: Optional[app_commands.Choice[str]] = None):
+    global current_enemy, players, party_health, enemy_attacking
     battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
     if interaction.channel != battle_room:
         await interaction.response.send_message(f"This command can only be used in the #{BATTLE_CHANNEL} channel.", ephemeral=True)
         return
 
-    enemy = load_json(CURRENT_ENEMY)
-    if not enemy:
+    if not current_enemy:
         await interaction.response.send_message("There's currently no enemy to attack, use /summon_enemy first!", ephemeral=True)
         return
 
-    players = load_json(PLAYERS_FILE)
     user_id = str(interaction.user.id)
     if user_id not in players:
         await interaction.response.send_message("You should /join_the_fight first!", ephemeral=True)
@@ -558,39 +477,47 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
     if weapon == "Dagger":
         damage = player["player_level"]
         player["cooldowns"]["attack"] = now + DAGGER_ATTACK_TIMER
+        emote = "🗡️"
     elif weapon == "Sword":
         damage = math.ceil(player["player_level"] * 1.5)
         player["cooldowns"]["attack"] = now + SWORD_ATTACK_TIMER
+        emote = "⚔️"
     elif weapon == "Mace":
         damage = player["player_level"] * 2
         player["cooldowns"]["attack"] = now + MACE_ATTACK_TIMER
+        emote = "🔨"
     elif weapon == "Fireball":
         damage = player["player_level"] * 4
         player["cooldowns"]["attack"] = now + FIREBALL_ATTACK_TIMER
+        emote = "🔥"
+    elif weapon == "Punch":
+        damage = 1
+        player["cooldowns"]["attack"] = now  + PUNCH_ATTACK_TIMER
+        emote = "✊"
 
-    enemy["enemy_health"] -= damage
+    current_enemy["enemy_health"] -= damage
 
     if not player["contributed"]:
         player["contributed"] = True
 
-    if enemy["enemy_health"] > 0:
-        save_json(CURRENT_ENEMY, enemy)
-        save_json(PLAYERS_FILE, players)
+    if current_enemy["enemy_health"] > 0:
+        save_json("current_enemy.json", current_enemy)
+        save_json("players.json", players)
         await interaction.response.send_message(
-            f"🗡️ {interaction.user.mention} attacked with their {weapon}, and dealt **{damage}** damage to **{enemy['enemy_name']}**!\n"
-            f"💔 Remaining HP: {enemy['enemy_health']}",
+            f"{emote} {interaction.user.mention} attacked with their {weapon}, and dealt **{damage}** damage to **{current_enemy['enemy_name']}**!\n"
+            f"💔 Remaining HP: {current_enemy['enemy_health']}",
             ephemeral=False
         )
         return
 
     final_blow_msg = (
-        f"{interaction.user.mention} attacked with their {weapon}, dealt **{damage}** damage, and defeated **{enemy['enemy_name']}**!\n"
-        f"All attackers gained **{enemy['enemy_exp']} EXP**!"
-        f"{enemy['enemy_name']} will return in the future, stronger!"
+        f"{emote} {interaction.user.mention} attacked with their {weapon}, dealt **{damage}** damage, and defeated **{current_enemy['enemy_name']}**!\n"
+        f"All attackers gained **{current_enemy['enemy_exp']} EXP**!"
+        f"{current_enemy['enemy_name']} will return in the future, stronger!"
     )
 
-    exp_reward = enemy["enemy_exp"]
-    source_file = enemy.get("source_file")
+    exp_reward = current_enemy["enemy_exp"]
+    source_file = current_enemy.get("source_file")
 
     level_ups = []
     for victor_id, victor in players.items():
@@ -603,16 +530,14 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
                 victor["player_exp"] -= 100
                 victor["player_level"] += 1
     party_health = []
-    save_json(PLAYERS_FILE, players)
-    save_json(PARTY_HEALTH_FILE, party_health)
-    await stop_enemy_attack_loop()
-    global enemy_attacking
+    save_json("players.json", players)
+    save_json("party_health.json", party_health)
     enemy_attacking = False
 
     if source_file:
         enemy_list = load_json(source_file)
         for e in enemy_list:
-            if e["enemy_name"] == enemy["enemy_name"]:
+            if e["enemy_name"] == current_enemy["enemy_name"]:
                 if source_file == "enemies.json":
                     e["enemy_health"] = math.ceil(e["enemy_health"] * 1.1)
                     e["damage"] += 0.2
@@ -627,8 +552,9 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
                     e["damage"] += 1
                     e["enemy_exp"] += 10
                 break
+        current_enemy = {}
         save_json(source_file, enemy_list)
-        save_json(CURRENT_ENEMY, {})
+        save_json("current_enemy.json", current_enemy)
 
     if level_ups:
         final_blow_msg += "\n\n**Level Up!**\n" + "\n".join(f"⭐ {name} leveled up!" for name in level_ups)
@@ -637,19 +563,18 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
 
 @bot.tree.command(name="heal", description="Heals the party!")
 async def heal(interaction: discord.Interaction):
+    global party_health
     battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
     if interaction.channel != battle_room:
         await interaction.response.send_message(f"This command can only be used in the #{BATTLE_CHANNEL} channel.",
                                                 ephemeral=True)
         return
 
-    enemy = load_json(CURRENT_ENEMY)
-    if not enemy:
+    if not current_enemy:
         await interaction.response.send_message("There's currently no enemy attacking the party, use /summon_enemy first!",
                                                 ephemeral=True)
         return
 
-    players = load_json(PLAYERS_FILE)
     user_id = str(interaction.user.id)
     if user_id not in players:
         await interaction.response.send_message("You should /join_the_fight first!", ephemeral=True)
@@ -671,8 +596,7 @@ async def heal(interaction: discord.Interaction):
         )
         return
     player["cooldowns"]["attack"] = now + HEAL_TIMER
-    health = load_json(PARTY_HEALTH_FILE)
-    new_health = [health[0] + player["player_level"]]
+    party_health = [health[0] + player["player_level"]]
     await interaction.response.send_message(
         f"❤️ {interaction.user.mention} has healed the party for {player['player_level']}, bringing the party to {new_health[0]}!",
         ephemeral=False
@@ -711,8 +635,6 @@ async def checkstats(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"Greetings {p_name}! You are currently level {p_level}, with {p_exp} exp, and you {p_attack}",
         ephemeral=True)
-
-enemy = load_json(CURRENT_ENEMY)
 
 print("Starting Xhuribot...")
 bot.run(token)
