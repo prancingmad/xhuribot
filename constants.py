@@ -8,6 +8,7 @@ JSON_DIR = "stored_info"
 MOD_ROLE = "Mod"
 LOG_CHANNEL_NAME = "modbot_output"
 BATTLE_CHANNEL = "battle_room"
+BOT_CHANNEL = "bot-commands"
 
 # Spare comment
 

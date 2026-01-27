@@ -77,11 +77,11 @@ async def hourly_check():
     while not bot.is_closed():
         if enemy_attacking:
             damage = math.floor(current_enemy["damage"])
-            new_health = [party_health[0] - damage]
+            party_health[0] -= damage
 
-            if new_health[0] <= 0:
+            if party_health[0] <= 0:
                 await battle_room.send("☠️The enemy has defeated the party...")
-                current_enemy = []
+                current_enemy = {}
                 party_health = []
                 for victor in players.values():
                     victor["contributed"] = False
@@ -90,7 +90,7 @@ async def hourly_check():
                 save_json("players.json", players)
             else:
                 await battle_room.send(
-                    f"💀The enemy has attacked the party and dealt {damage} damage! Party HP: {new_health[0]}"
+                    f"💀The enemy has attacked the party and dealt {damage} damage! Party HP: {party_health[0]}"
                 )
         await asyncio.sleep(60 * 60)
 
@@ -426,7 +426,6 @@ async def summon_enemy(interaction: discord.Interaction):
     party_health = [10]
     save_json("current_enemy.json", current_enemy)
     save_json("party_health.json", party_health)
-    await start_enemy_attack_loop()
     enemy_attacking = True
 
     await interaction.followup.send(f"{interaction.user.mention} encountered a **{enemy['enemy_name']}**! Work together to defeat it!")
@@ -544,11 +543,6 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
                     e["enemy_exp"] += 1
                 elif source_file == "bosses.json":
                     e["enemy_health"] = math.ceil(e["enemy_health"] * 1.2)
-                    e["damage"] += 0.5
-                    e["damage"] += 0.5
-                    e["enemy_exp"] += 1
-                elif source_file == "bosses.json":
-                    e["enemy_health"] = math.ceil(e["enemy_health"] * 1.2)
                     e["damage"] += 1
                     e["enemy_exp"] += 10
                 break
@@ -596,20 +590,18 @@ async def heal(interaction: discord.Interaction):
         )
         return
     player["cooldowns"]["attack"] = now + HEAL_TIMER
-    party_health = [health[0] + player["player_level"]]
+    party_health[0] += player["player_level"]
     await interaction.response.send_message(
-        f"❤️ {interaction.user.mention} has healed the party for {player['player_level']}, bringing the party to {new_health[0]}!",
+        f"❤️ {interaction.user.mention} has healed the party for {player['player_level']}, bringing the party to {party_health[0]}!",
         ephemeral=False
     )
     player["contributed"] = True
-    save_json(PLAYERS_FILE, players)
-    save_json(PARTY_HEALTH_FILE, new_health)
-
+    save_json("players.json", players)
+    save_json("party_health.json", party_health)
 
 @bot.tree.command(name="checkstats", description="Checks your current stats.")
 async def checkstats(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
-    players = load_json(PLAYERS_FILE)
 
     if user_id not in players:
         await interaction.response.send_message("You should /join_the_fight first!", ephemeral=True)
@@ -627,7 +619,12 @@ async def checkstats(interaction: discord.Interaction):
         remaining = int(attack_cd - now)
         hours, rem = divmod(remaining, 3600)
         minutes, seconds = divmod(rem, 60)
-        time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+        if hours:
+            time_str = f"{hours:02} hours, {minutes:02} minutes, and {seconds:02} seconds"
+        elif minutes:
+            time_str = f"{minutes:02} minutes and {seconds:02} seconds"
+        else:
+            time_str = f"{seconds:02} seconds"
         p_attack = f"must wait **{time_str}** before attacking again!"
     else:
         p_attack = "are able to attack!"
@@ -635,6 +632,29 @@ async def checkstats(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"Greetings {p_name}! You are currently level {p_level}, with {p_exp} exp, and you {p_attack}",
         ephemeral=True)
+
+@bot.tree.command(name="leaderboard", description="Check the level leaderboard.")
+async def leaderboard(interaction: discord.Interaction):
+    battle_room = discord.utils.get(interaction.guild.text_channels, name=BATTLE_CHANNEL)
+    bot_room = discord.utils.get(interaction.guild.text_channels, name=BOT_CHANNEL)
+
+    if interaction.channel not in (battle_room, bot_room):
+        await interaction.response.send_message(
+            f"This command can only be used in #{BATTLE_CHANNEL} or #{BOT_CHANNEL}.",
+            ephemeral=True
+        )
+        return
+
+    first_place, second_place, third_place, fourth_place, fifth_place = find_leaderboard(players)
+
+    await interaction.response.send_message(
+        f"Here are the current standings!\n"
+        f"```\n1. {first_place['name']} - {first_place['score']}\n"
+        f"2. {second_place['name']} - {second_place['score']}\n"
+        f"3. {third_place['name']} - {third_place['score']}\n"
+        f"4. {fourth_place['name']} - {fourth_place['score']}\n"
+        f"5. {fifth_place['name']} - {fifth_place['score']}\n```"
+    )
 
 print("Starting Xhuribot...")
 bot.run(token)
