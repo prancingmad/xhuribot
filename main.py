@@ -49,6 +49,9 @@ players = load_json("players.json")
 random_shorts = load_json("random_shorts.json")
 short_comments = load_json("short_comments.json")
 
+#Constants
+battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
+
 @bot.event
 async def on_ready():
     global bot_ready, enemy_attacking, hourly_task_flag
@@ -75,12 +78,8 @@ async def hourly_check():
     await bot.wait_until_ready()
 
     logging.info("Hourly Task: Bot Ready, 60 minute timer started")
-    time_test = 5
-    await asyncio.sleep(time_test)
-    logging.info(f"Hourly Task: {time_test} second passed")
+    await asyncio.sleep(5)
 
-    """
-    battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
     while not bot.is_closed():
         try:
             logging.info("Hourly Task: Timer elapsed - enemy_attack=%s, current_enemy=%s", enemy_attacking, bool(current_enemy))
@@ -95,8 +94,10 @@ async def hourly_check():
                 else:
                     damage = math.floor(current_enemy["damage"])
                     party_health[0] -= damage
+                    posted_amount = party_health[0]
 
                     if party_health[0] <= 0:
+                        """
                         await battle_room.send("☠️The enemy has defeated the party...")
                         current_enemy = {}
                         party_health = []
@@ -106,18 +107,21 @@ async def hourly_check():
                         save_json("current_enemy.json", current_enemy)
                         save_json("party_health.json", party_health)
                         save_json("players.json", players)
+                        """
+                        logging.info(f"party_health = {posted_amount}")
                     else:
+                        """
                         await battle_room.send(
                             f"💀The enemy has attacked the party and dealt {damage} damage! Party HP: {party_health[0]}"
                         )
+                        """
                         logging.info("Hourly Task: Completed; damage=%s", damage)
             else:
                 logging.info("Hourly task: no active enemy to attack.")
 
         except Exception as e:
             logging.exception("Hourly task: unexpected error: %s",e )
-        await asyncio.sleep(60 * 60)
-        """
+        await asyncio.sleep(5)
 
 @bot.event
 async def on_message(message):
