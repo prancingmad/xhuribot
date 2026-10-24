@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from typing import Optional
 from constants import *
 from reuse_functions import *
+from datetime import datetime, timedelta
 
 #Initialize
 load_dotenv()
@@ -134,11 +135,18 @@ async def hourly_check():
 
     await bot.wait_until_ready()
 
-    logging.info("Hourly Task: Bot Ready, 60 minute timer started")
-    await asyncio.sleep(3600)
+    logging.info("Hourly Task: Bot Ready")
 
     while not bot.is_closed():
         try:
+            now = datetime.now().astimezone()
+            next_hour = (now + timedelta(hours=1)).replace(
+                minute=0, second=0, microsecond=0
+            )
+            wait_seconds = (next_hour - now).total_seconds()
+
+            await asyncio.sleep(wait_seconds)
+
             battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
             if enemy_attacking:
 
@@ -169,7 +177,6 @@ async def hourly_check():
 
         except Exception as e:
             logging.exception("Hourly task: unexpected error: %s",e )
-        await asyncio.sleep(3600)
 
 @bot.event
 async def on_message(message):
