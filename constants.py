@@ -15,7 +15,7 @@ BOT_CHANNEL = "bot-commands"
 # Combat game constants
 conmath = 60
 DAGGER_ATTACK_TIMER = 8 * conmath * conmath
-SWORD_ATTACK_TIMER = 18 * conmath * conmath
+SWORD_ATTACK_TIMER = 16 * conmath * conmath
 MACE_ATTACK_TIMER = 24 * conmath * conmath
 FIREBALL_ATTACK_TIMER = 48 * conmath * conmath
 HEAL_TIMER =  18 * conmath * conmath
