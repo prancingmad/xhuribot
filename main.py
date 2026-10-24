@@ -70,29 +70,54 @@ async def on_ready():
 
 async def hourly_check():
     global current_enemy, party_health
+
+    logging.info("Hourly Task: Waiting for bot to log in.")
     await bot.wait_until_ready()
-    await asyncio.sleep(60 * 60)
+
+    logging.info("Hourly Task: Bot Ready, 60 minute timer started")
+    time_test = 5
+    await asyncio.sleep(time_test)
+    logging.info(f"Hourly Task: {time_test} second passed")
+
+    """
     battle_room = discord.utils.get(bot.get_all_channels(), name=BATTLE_CHANNEL)
-
     while not bot.is_closed():
-        if enemy_attacking:
-            damage = math.floor(current_enemy["damage"])
-            party_health[0] -= damage
+        try:
+            logging.info("Hourly Task: Timer elapsed - enemy_attack=%s, current_enemy=%s", enemy_attacking, bool(current_enemy))
 
-            if party_health[0] <= 0:
-                await battle_room.send("☠️The enemy has defeated the party...")
-                current_enemy = {}
-                party_health = []
-                for victor in players.values():
-                    victor["contributed"] = False
-                save_json("current_enemy.json", current_enemy)
-                save_json("party_health.json", party_health)
-                save_json("players.json", players)
+            if enemy_attacking:
+                if battle_room is None:
+                    logging.error("Hourly Task: No battle room.")
+                elif not current_enemy:
+                    logging.error("Hourly Task: enemy_attacking is True, but current_enemy is None.")
+                elif not party_health:
+                    logging.error("Hourly Task: enemy_attacking is True, but party_health is None/empty")
+                else:
+                    damage = math.floor(current_enemy["damage"])
+                    party_health[0] -= damage
+
+                    if party_health[0] <= 0:
+                        await battle_room.send("☠️The enemy has defeated the party...")
+                        current_enemy = {}
+                        party_health = []
+                        for victor in players.values():
+                            victor["contributed"] = False
+                            enemy_attacking = False
+                        save_json("current_enemy.json", current_enemy)
+                        save_json("party_health.json", party_health)
+                        save_json("players.json", players)
+                    else:
+                        await battle_room.send(
+                            f"💀The enemy has attacked the party and dealt {damage} damage! Party HP: {party_health[0]}"
+                        )
+                        logging.info("Hourly Task: Completed; damage=%s", damage)
             else:
-                await battle_room.send(
-                    f"💀The enemy has attacked the party and dealt {damage} damage! Party HP: {party_health[0]}"
-                )
+                logging.info("Hourly task: no active enemy to attack.")
+
+        except Exception as e:
+            logging.exception("Hourly task: unexpected error: %s",e )
         await asyncio.sleep(60 * 60)
+        """
 
 @bot.event
 async def on_message(message):
@@ -407,7 +432,7 @@ async def summon_enemy(interaction: discord.Interaction):
         description=(
             f"🩸 **Health:** {enemy['enemy_health']}\n"
             f"🏆 **EXP REWARD:** {enemy['enemy_exp']}\n"
-            f"💖 **Party Health:** 10"
+            f"💖 **Party Health:**50"
         ),
         color=discord.Color.red()
     )
@@ -423,7 +448,7 @@ async def summon_enemy(interaction: discord.Interaction):
         message = await interaction.channel.send(embed=embed)
 
     current_enemy["message_id"] = message.id
-    party_health = [10]
+    party_health = [50]
     save_json("current_enemy.json", current_enemy)
     save_json("party_health.json", party_health)
     enemy_attacking = True
@@ -540,11 +565,11 @@ async def attack(interaction: discord.Interaction, weapon: Optional[app_commands
                 if source_file == "enemies.json":
                     e["enemy_health"] = math.ceil(e["enemy_health"] * 1.1)
                     e["damage"] += 0.2
-                    e["enemy_exp"] += 1
+                    e["enemy_exp"] = math.ceil(e["enemy_exp"] * 1.1)
                 elif source_file == "bosses.json":
                     e["enemy_health"] = math.ceil(e["enemy_health"] * 1.2)
                     e["damage"] += 1
-                    e["enemy_exp"] += 10
+                    e["enemy_exp"] = math.ceil(e["enemy_exp"] * 1.2)
                 break
         current_enemy = {}
         save_json(source_file, enemy_list)
